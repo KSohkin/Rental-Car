@@ -18,6 +18,10 @@ const HIGH_SEASON_END_MONTH = 10;  // November (0-indexed)
 const RACER_HIGH_SEASON_YOUNG_MULTIPLIER = 1.5;
 const HIGH_SEASON_MULTIPLIER = 1.15;
 const LONG_RENTAL_LOW_SEASON_DISCOUNT = 0.9;
+const WEEKEND_PRICE_MULTIPLIER = 1.05;
+
+const SATURDAY = 6;
+const SUNDAY = 0;
 
 const CAR_CLASSES = {
   Compact: "Compact",
@@ -54,7 +58,8 @@ function price(pickup, dropoff, pickupDate, dropoffDate, type, age, licenseYears
     return eligibilityError;
   }
 
-  let rentalPrice = calculateBasePrice(age, days);
+  const startDate = Math.min(pickupDate, dropoffDate);
+  let rentalPrice = calculateBasePrice(age, startDate, days);
   rentalPrice = applySeasonAndClassModifiers(rentalPrice, carClass, age, season);
   rentalPrice = applyRentalDurationDiscount(rentalPrice, days, season);
   rentalPrice = applyLicenseSurcharges(rentalPrice, licenseYears, days, season);
@@ -82,8 +87,25 @@ function checkEligibility(age, carClass, licenseYears) {
 
 // --- Price calculation steps ---
 
-function calculateBasePrice(age, days) {
-  return age * days;
+/**
+ * Calculates base price by iterating over each rental day individually.
+ * Weekend days (Saturday and Sunday) receive a 5% surcharge.
+ * @param {number} age - Driver age (used as the base daily rate)
+ * @param {number} startDate - Chronologically earlier date as ms timestamp
+ * @param {number} days - Total number of rental days
+ * @returns {number} Summed base price across all days
+ */
+function calculateBasePrice(age, startDate, days) {
+  const MS_PER_DAY = 24 * 60 * 60 * 1000;
+  let total = 0;
+
+  for (let i = 0; i < days; i++) {
+    const dayOfWeek = new Date(startDate + i * MS_PER_DAY).getDay();
+    const isWeekend = dayOfWeek === SATURDAY || dayOfWeek === SUNDAY;
+    total += isWeekend ? age * WEEKEND_PRICE_MULTIPLIER : age;
+  }
+
+  return total;
 }
 
 function applySeasonAndClassModifiers(rentalPrice, carClass, age, season) {

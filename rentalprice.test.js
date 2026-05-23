@@ -159,30 +159,30 @@ describe('Long rental low-season discount', () => {
   const LONG_LOW_DROPOFF = makeDate(2024, 1, 11); // 11 days, low season
 
   test('11 days in low season → 10% discount', () => {
-    // base=30*11=330, ×0.9=297
+    // Jan 1(Mon)–11(Thu): 9 weekdays×30 + 2 weekend days×31.50 = 333, ×0.9 = 299.70
     expect(priceWith({
       age: 30, licenseYears: 5,
       pickupDate: LONG_LOW_PICKUP, dropoffDate: LONG_LOW_DROPOFF,
-    })).toBe('$297.00');
+    })).toBe('$299.70');
   });
 
   test('exactly 10 days in low season → NO discount', () => {
     const tenDayDropoff = makeDate(2024, 1, 10); // 10 days
-    // base=30*10=300
+    // Jan 1(Mon)–10(Wed): 8 weekdays×30 + 2 weekend days×31.50 = 303, no discount
     expect(priceWith({
       age: 30, licenseYears: 5,
       pickupDate: LONG_LOW_PICKUP, dropoffDate: tenDayDropoff,
-    })).toBe('$300.00');
+    })).toBe('$303.00');
   });
 
   test('11 days in HIGH season → NO discount', () => {
     const longHighPickup  = makeDate(2024, 7, 1);
     const longHighDropoff = makeDate(2024, 7, 11); // 11 days, high season
-    // base=30*11=330, ×1.15=379.50 (no long-rental discount)
+    // Jul 1(Mon)–11(Thu): 9 weekdays×30 + 2 weekend days×31.50 = 333, ×1.15 = 382.95
     expect(priceWith({
       age: 30, licenseYears: 5,
       pickupDate: longHighPickup, dropoffDate: longHighDropoff,
-    })).toBe('$379.50');
+    })).toBe('$382.95');
   });
 });
 
@@ -284,19 +284,21 @@ describe('Season boundary detection', () => {
   test('pickup in November (month 11) is high season', () => {
     const novPickup  = makeDate(2024, 11, 1);
     const novDropoff = makeDate(2024, 11, 3);
+    // Nov 1(Fri), 2(Sat), 3(Sun): 1 weekday×30 + 2 weekend days×31.50 = 93, ×1.15 = 106.95
     expect(priceWith({
       age: 30, licenseYears: 5,
       pickupDate: novPickup, dropoffDate: novDropoff,
-    })).toBe('$103.50');
+    })).toBe('$106.95');
   });
 
   test('pickup in December is low season', () => {
     const decPickup  = makeDate(2024, 12, 1);
     const decDropoff = makeDate(2024, 12, 3);
+    // Dec 1(Sun), 2(Mon), 3(Tue): 1 weekend day×31.50 + 2 weekdays×30 = 91.50
     expect(priceWith({
       age: 30, licenseYears: 5,
       pickupDate: decPickup, dropoffDate: decDropoff,
-    })).toBe('$90.00');
+    })).toBe('$91.50');
   });
 
   test('rental spanning from low to high season is treated as high season', () => {
@@ -333,4 +335,117 @@ describe('Days calculation', () => {
       pickupDate: LOW_DROPOFF, dropoffDate: LOW_PICKUP, // swapped
     })).toBe('$90.00'); // still 3 days
   });
+});
+// ===========================================================================
+// 13. WEEKDAY / WEEKEND pricing
+//
+// Rules:
+//   Weekdays (Mon–Fri) → regular daily rate (age × 1)
+//   Weekend days (Sat–Sun) → daily rate × 1.05 (+5%)
+//
+// Reference dates (January 2024, low season):
+//   Mon=8, Tue=9, Wed=10, Thu=11, Fri=12, Sat=13, Sun=14, Mon=15
+// ===========================================================================
+describe('Weekday / Weekend pricing', () => {
+
+  // --- Assignment acceptance tests -----------------------------------------
+
+  test('Example 1: age 50, Mon–Wed (3 weekdays) → $150.00', () => {
+    // Mon=50, Tue=50, Wed=50 → 150.00
+    expect(priceWith({
+      age: 50, licenseYears: 5,
+      pickupDate:  makeDate(2024, 1, 8),   // Monday
+      dropoffDate: makeDate(2024, 1, 10),  // Wednesday
+    })).toBe('$150.00');
+  });
+
+  test('Example 2: age 50, Thu–Sat (2 weekdays + 1 weekend day) → $152.50', () => {
+    // Thu=50, Fri=50, Sat=50×1.05=52.50 → 152.50
+    expect(priceWith({
+      age: 50, licenseYears: 5,
+      pickupDate:  makeDate(2024, 1, 11),  // Thursday
+      dropoffDate: makeDate(2024, 1, 13),  // Saturday
+    })).toBe('$152.50');
+  });
+
+  // --- Individual day type verification ------------------------------------
+
+  test('single weekday (Monday) → no surcharge', () => {
+    // 50 × 1 = $50.00
+    expect(priceWith({
+      age: 50, licenseYears: 5,
+      pickupDate:  makeDate(2024, 1, 8),
+      dropoffDate: makeDate(2024, 1, 8),
+    })).toBe('$50.00');
+  });
+
+  test('single Saturday → 5% surcharge', () => {
+    // 50 × 1.05 = $52.50
+    expect(priceWith({
+      age: 50, licenseYears: 5,
+      pickupDate:  makeDate(2024, 1, 13),
+      dropoffDate: makeDate(2024, 1, 13),
+    })).toBe('$52.50');
+  });
+
+  test('single Sunday → 5% surcharge', () => {
+    // 50 × 1.05 = $52.50
+    expect(priceWith({
+      age: 50, licenseYears: 5,
+      pickupDate:  makeDate(2024, 1, 14),
+      dropoffDate: makeDate(2024, 1, 14),
+    })).toBe('$52.50');
+  });
+
+  // --- Multi-day combinations ----------------------------------------------
+
+  test('Sat–Sun (2 weekend days) → both get 5% surcharge', () => {
+    // 52.50 + 52.50 = $105.00
+    expect(priceWith({
+      age: 50, licenseYears: 5,
+      pickupDate:  makeDate(2024, 1, 13),  // Saturday
+      dropoffDate: makeDate(2024, 1, 14),  // Sunday
+    })).toBe('$105.00');
+  });
+
+  test('Mon–Sun (full week: 5 weekdays + 2 weekend days)', () => {
+    // 5×50 + 2×52.50 = 250 + 105 = $355.00
+    expect(priceWith({
+      age: 50, licenseYears: 5,
+      pickupDate:  makeDate(2024, 1, 8),   // Monday
+      dropoffDate: makeDate(2024, 1, 14),  // Sunday
+    })).toBe('$355.00');
+  });
+
+  test('Fri–Mon spans a weekend (Fri, Sat, Sun, Mon)', () => {
+    // 50 + 52.50 + 52.50 + 50 = $205.00
+    expect(priceWith({
+      age: 50, licenseYears: 5,
+      pickupDate:  makeDate(2024, 1, 12),  // Friday
+      dropoffDate: makeDate(2024, 1, 15),  // Monday
+    })).toBe('$205.00');
+  });
+
+  // --- Weekend pricing interacts correctly with other modifiers ------------
+
+  test('weekend days combine with high-season multiplier', () => {
+    // Jul 2024: Sat 6, Sun 7 (high season)
+    // 52.50 + 52.50 = 105, × 1.15 = $120.75
+    expect(priceWith({
+      age: 50, licenseYears: 5,
+      pickupDate:  makeDate(2024, 7, 6),   // Saturday in July
+      dropoffDate: makeDate(2024, 7, 7),   // Sunday
+    })).toBe('$120.75');
+  });
+
+  test('weekend days combine with long-rental low-season discount', () => {
+    // Jan 8(Mon)–18(Thu): 11 days → 9 weekdays×50 + 2 weekend days×52.50
+    // = 450 + 105 = 555, × 0.9 (>10 days, low season) = $499.50
+    expect(priceWith({
+      age: 50, licenseYears: 5,
+      pickupDate:  makeDate(2024, 1, 8),   // Monday
+      dropoffDate: makeDate(2024, 1, 18),  // Thursday (11 days)
+    })).toBe('$499.50');
+  });
+
 });
